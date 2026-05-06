@@ -3,7 +3,7 @@ import { Timestamp, query, collection, where, getDocs } from 'firebase/firestore
 import { db } from '../../firebase-bridge';
 import { Dress, InventoryItem } from '../../types';
 import { bookingService } from '../../services/bookingService';
-import { Calendar, CheckCircle2, XCircle, Loader2, ShoppingBag } from 'lucide-react';
+import { Calendar, CheckCircle2, XCircle, Loader2, ShoppingBag, AlertTriangle } from 'lucide-react';
 
 interface Props {
     dress: Dress;
@@ -22,9 +22,10 @@ export default function AvailabilityChecker({ dress }: Props) {
     const [slots, setSlots] = useState<AvailableSlot[]>([]);
     const [hasChecked, setHasChecked] = useState(false);
     const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
-    const [customerName, setCustomerName] = useState('');
+    const [customer_name, setCustomerName] = useState('');
     const [customerEmail, setCustomerEmail] = useState('');
     const [bookingSuccess, setBookingSuccess] = useState(false);
+    const [errorMessage, setErrorMessage] = useState('');
 
     const totalDays = startDate && endDate
         ? Math.max(1, Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000))
@@ -35,12 +36,16 @@ export default function AvailabilityChecker({ dress }: Props) {
         if (!startDate || !endDate) return;
         const start = new Date(startDate);
         const end = new Date(endDate);
-        if (start >= end) { alert('تاريخ النهاية يجب أن يكون بعد تاريخ البداية.'); return; }
+        if (start >= end) { 
+            setErrorMessage('تاريخ النهاية يجب أن يكون بعد تاريخ البداية.'); 
+            return; 
+        }
 
         setChecking(true);
         setHasChecked(false);
         setSelectedItem(null);
         setBookingSuccess(false);
+        setErrorMessage('');
 
         try {
             const itemsSnap = await getDocs(
@@ -50,8 +55,9 @@ export default function AvailabilityChecker({ dress }: Props) {
             );
             const allItems = itemsSnap.docs.map(d => ({ id: d.id, ...d.data() } as InventoryItem));
 
+            // Maintenance buffer calculation
             const bufferEnd = new Date(end);
-            bufferEnd.setDate(bufferEnd.getDate() + dress.cleaningBufferDays);
+            bufferEnd.setDate(bufferEnd.getDate() + (dress.cleaningBufferDays || 1));
 
             const results = await Promise.all(
                 allItems.map(async (item) => ({
@@ -60,10 +66,17 @@ export default function AvailabilityChecker({ dress }: Props) {
                 }))
             );
 
+            const isBlockedByBuffer = results.every(r => !r.available);
+            if (isBlockedByBuffer) {
+                // Heuristic check: see if it overlaps specifically with a buffer
+                setErrorMessage('تاريخ غير صالح: مطلوب فترة صيانة 24 ساعة.');
+            }
+
             setSlots(results);
             setHasChecked(true);
         } catch (error) {
             console.error('Error checking availability:', error);
+            setErrorMessage('فشل التحقق من التوفر. يرجى المحاولة مرة أخرى.');
         } finally {
             setChecking(false);
         }
@@ -71,19 +84,19 @@ export default function AvailabilityChecker({ dress }: Props) {
 
     const handleBook = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!selectedItem || !startDate || !endDate || !customerName || !customerEmail) return;
+        if (!selectedItem || !startDate || !endDate || !customer_name || !customerEmail) return;
 
         setBooking(true);
         try {
             const start = new Date(startDate);
             const end = new Date(endDate);
             const bufferEnd = new Date(end);
-            bufferEnd.setDate(bufferEnd.getDate() + dress.cleaningBufferDays);
+            bufferEnd.setDate(bufferEnd.getDate() + (dress.cleaningBufferDays || 1));
 
             await bookingService.createReservation({
                 itemId: selectedItem.id,
                 dressId: dress.id,
-                customerName,
+                customer_name,
                 customerEmail,
                 startDate: Timestamp.fromDate(start),
                 endDate: Timestamp.fromDate(end),
@@ -99,6 +112,7 @@ export default function AvailabilityChecker({ dress }: Props) {
             await checkAvailability();
         } catch (error) {
             console.error('Booking error:', error);
+            setErrorMessage('فشل إتمام الحجز. يرجى المحاولة مرة أخرى.');
         } finally {
             setBooking(false);
         }
@@ -112,20 +126,27 @@ export default function AvailabilityChecker({ dress }: Props) {
                 <div className="space-y-1.5">
                     <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest">تاريخ البداية</label>
                     <input type="date" value={startDate}
-                        onChange={(e) => { setStartDate(e.target.value); setHasChecked(false); }}
+                        onChange={(e) => { setStartDate(e.target.value); setHasChecked(false); setErrorMessage(''); }}
                         min={new Date().toISOString().split('T')[0]}
                         className="w-full h-11 px-4 bg-stone-50 border border-stone-200 rounded-xl text-sm outline-none focus:border-stone-900 transition-all" />
                 </div>
                 <div className="space-y-1.5">
                     <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest">تاريخ النهاية</label>
                     <input type="date" value={endDate}
-                        onChange={(e) => { setEndDate(e.target.value); setHasChecked(false); }}
+                        onChange={(e) => { setEndDate(e.target.value); setHasChecked(false); setErrorMessage(''); }}
                         min={startDate || new Date().toISOString().split('T')[0]}
                         className="w-full h-11 px-4 bg-stone-50 border border-stone-200 rounded-xl text-sm outline-none focus:border-stone-900 transition-all" />
                 </div>
             </div>
 
-            {totalDays > 0 && (
+            {errorMessage && (
+                <div className="p-4 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-3 animate-in">
+                    <AlertTriangle className="w-5 h-5 text-rose-600 flex-shrink-0" />
+                    <p className="text-rose-700 text-sm font-medium">{errorMessage}</p>
+                </div>
+            )}
+
+            {totalDays > 0 && !errorMessage && (
                 <div className="flex justify-between items-center p-4 bg-stone-50 rounded-xl border border-stone-100 text-sm">
                     <span className="text-stone-500">المدة: {totalDays} يوم</span>
                     <span className="font-bold text-stone-900">الإجمالي: {totalPrice.toFixed(2)} ج.م</span>
@@ -145,7 +166,7 @@ export default function AvailabilityChecker({ dress }: Props) {
                 </div>
             )}
 
-            {hasChecked && (
+            {hasChecked && !errorMessage && (
                 <div className="space-y-4 animate-in">
                     {availableSlots.length > 0 ? (
                         <div className="space-y-4">
@@ -169,7 +190,7 @@ export default function AvailabilityChecker({ dress }: Props) {
                                 <form onSubmit={handleBook} className="p-6 bg-stone-50 border border-stone-200 rounded-xl space-y-4 mt-2">
                                     <h4 className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-2">إتمام الحجز - مقاس {selectedItem.size}</h4>
                                     <div className="space-y-3">
-                                        <input required placeholder="اسم العميل الكامل" value={customerName}
+                                        <input required placeholder="اسم العميل الكامل" value={customer_name}
                                             onChange={(e) => setCustomerName(e.target.value)}
                                             className="w-full h-11 px-4 bg-white border border-stone-200 rounded-lg outline-none focus:border-stone-900 text-sm" />
                                         <input required type="email" placeholder="البريد الإلكتروني" value={customerEmail}

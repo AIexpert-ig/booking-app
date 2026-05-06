@@ -18,12 +18,12 @@ interface PhysicalItemDraft {
 export default function DressForm({ initialData, onSuccess, onCancel }: DressFormProps) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const [formData, setFormData] = useState<Omit<Dress, 'id' | 'createdAt'>>(initialData || {
+    const [formData, setFormData] = useState<Partial<Dress>>(initialData || {
         name: '',
         description: '',
         basePrice: 0,
         category: 'فساتين سهرة',
-        imageUrl: '',
+        image_url: '',
         cleaningBufferDays: 1,
     });
     const [items, setItems] = useState<PhysicalItemDraft[]>([{ size: 'M', color: '', sku: '' }]);
@@ -38,10 +38,20 @@ export default function DressForm({ initialData, onSuccess, onCancel }: DressFor
         setLoading(true);
         setError('');
         try {
+            // Sanitize Payload Mapping
+            const sanitizedDress = {
+                name: formData.name || '',
+                description: formData.description || '',
+                basePrice: Number(formData.basePrice) || 0,
+                category: formData.category || 'فساتين سهرة',
+                image_url: formData.image_url || '',
+                cleaningBufferDays: Number(formData.cleaningBufferDays) || 1,
+            };
+
             if (initialData) {
-                await inventoryService.updateDress(initialData.id, formData);
+                await inventoryService.updateDress(initialData.id, sanitizedDress);
             } else {
-                const dressId = await inventoryService.addDress(formData);
+                const dressId = await inventoryService.addDress(sanitizedDress);
                 await Promise.all(
                     items
                         .filter(item => item.size.trim() !== '')
@@ -49,8 +59,8 @@ export default function DressForm({ initialData, onSuccess, onCancel }: DressFor
                             inventoryService.addInventoryItem({
                                 dressId,
                                 size: item.size,
-                                color: item.color || undefined,
-                                sku: item.sku || undefined,
+                                color: item.color || '',
+                                sku: item.sku || '',
                                 status: 'available',
                             } as Omit<InventoryItem, 'id'>)
                         )
@@ -123,12 +133,12 @@ export default function DressForm({ initialData, onSuccess, onCancel }: DressFor
                             <label className="block text-xs font-bold text-stone-500 uppercase tracking-widest">صورة التصميم</label>
                             <div className="flex items-center gap-4">
                                 <div className="relative w-24 h-24 bg-stone-100 rounded-xl overflow-hidden border border-stone-200 flex items-center justify-center group">
-                                    {formData.imageUrl ? (
+                                    {formData.image_url ? (
                                         <>
-                                            <img src={formData.imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                                            <img src={formData.image_url} alt="Preview" className="w-full h-full object-cover" />
                                             <button 
                                                 type="button"
-                                                onClick={() => setFormData({ ...formData, imageUrl: '' })}
+                                                onClick={() => setFormData({ ...formData, image_url: '' })}
                                                 className="absolute inset-0 bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
                                             >
                                                 <X className="w-5 h-5" />
@@ -153,7 +163,7 @@ export default function DressForm({ initialData, onSuccess, onCancel }: DressFor
                                                     try {
                                                         setLoading(true);
                                                         const url = await inventoryService.uploadImage(file);
-                                                        setFormData({ ...formData, imageUrl: url });
+                                                        setFormData({ ...formData, image_url: url });
                                                     } catch (err: any) {
                                                         setError(err.message);
                                                     } finally {

@@ -111,7 +111,7 @@ export function StaffDashboard() {
                                             <User className="w-4 h-4" />
                                         </div>
                                         <div>
-                                            <p className="font-bold text-stone-900 text-sm">{booking.customerName}</p>
+                                            <p className="font-bold text-stone-900 text-sm">{booking.customer_name}</p>
                                             <p className="text-[10px] text-stone-400 font-medium">{booking.customerEmail}</p>
                                         </div>
                                     </div>
@@ -177,4 +177,3 @@ export function StaffDashboard() {
         </div>
     );
 }
-

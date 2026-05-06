@@ -16,7 +16,7 @@ export interface Dress {
   category: string;
   basePrice: number;
   cleaningBufferDays: number;
-  imageUrl?: string;
+  image_url?: string;
   createdAt?: Timestamp;
 }
 
@@ -34,7 +34,7 @@ export interface Reservation {
   id: string;
   itemId: string;
   dressId: string;
-  customerName: string;
+  customer_name: string;
   customerEmail: string;
   startDate: Timestamp;
   endDate: Timestamp;

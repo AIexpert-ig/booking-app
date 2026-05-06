@@ -5,7 +5,7 @@ import {
 import { db, handleFirestoreError, OperationType } from '../firebase-bridge';
 import { BookingWithDress, Dress, Reservation } from '../types';
 
-// Internal cache for optimistic updates and offline-like behavior
+// Internal cache for optimistic updates and offline-ready behavior
 let bookingsCache: BookingWithDress[] = [];
 
 export const bookingService = {
@@ -31,24 +31,30 @@ export const bookingService = {
             return data;
         } catch (error) {
             console.error('Fetch error:', error);
-            // Return cache if it exists, otherwise empty array
             return bookingsCache;
         }
     },
 
     async createReservation(data: Omit<Reservation, 'id' | 'createdAt'>): Promise<string> {
         try {
-            const resToSave = {
-                ...data,
+            // Explicit payload mapping (Sanitize Payload)
+            const payload = {
+                itemId: data.itemId,
+                dressId: data.dressId,
+                customer_name: data.customer_name,
+                customerEmail: data.customerEmail,
                 startDate: data.startDate instanceof Date ? Timestamp.fromDate(data.startDate) : data.startDate,
                 endDate: data.endDate instanceof Date ? Timestamp.fromDate(data.endDate) : data.endDate,
                 bufferEndDate: data.bufferEndDate instanceof Date ? Timestamp.fromDate(data.bufferEndDate) : data.bufferEndDate,
+                totalPrice: Number(data.totalPrice),
+                status: data.status || 'confirmed',
                 createdAt: Timestamp.now(),
             };
-            const docRef = await addDoc(collection(db, 'reservations'), resToSave);
             
-            // Update local cache
-            const newBooking: BookingWithDress = { id: docRef.id, ...resToSave as Reservation };
+            const docRef = await addDoc(collection(db, 'reservations'), payload);
+            
+            // Update local cache for immediate UI feedback
+            const newBooking: BookingWithDress = { id: docRef.id, ...payload as unknown as Reservation };
             bookingsCache = [newBooking, ...bookingsCache];
             
             return docRef.id;
@@ -60,15 +66,26 @@ export const bookingService = {
 
     async updateReservation(id: string, updates: Partial<Reservation>): Promise<void> {
         try {
+            // Explicitly map sanitized updates
+            const payload: any = {};
+            if (updates.customer_name !== undefined) payload.customer_name = updates.customer_name;
+            if (updates.status !== undefined) payload.status = updates.status;
+            if (updates.startDate !== undefined) payload.startDate = updates.startDate;
+            if (updates.endDate !== undefined) payload.endDate = updates.endDate;
+            if (updates.bufferEndDate !== undefined) payload.bufferEndDate = updates.bufferEndDate;
+
             // Optimistic update
-            bookingsCache = bookingsCache.map(b => b.id === id ? { ...b, ...updates } : b);
+            const originalCache = [...bookingsCache];
+            bookingsCache = bookingsCache.map(b => b.id === id ? { ...b, ...payload } : b);
             
-            // Persist to Firestore
-            const docRef = doc(db, 'reservations', id);
-            await updateDoc(docRef, updates as Record<string, unknown>);
+            try {
+                const docRef = doc(db, 'reservations', id);
+                await updateDoc(docRef, payload);
+            } catch (error) {
+                bookingsCache = originalCache; // Rollback on failure
+                throw error;
+            }
         } catch (error) {
-            // Rollback cache on error (simple re-fetch)
-            await this.fetchRecentBookings(true);
             handleFirestoreError(OperationType.UPDATE, error, 'reservations');
             throw error;
         }
@@ -77,19 +94,22 @@ export const bookingService = {
     async deleteReservation(id: string): Promise<void> {
         try {
             // Optimistic update
+            const originalCache = [...bookingsCache];
             bookingsCache = bookingsCache.filter(b => b.id !== id);
             
-            // Persist to Firestore
-            await deleteDoc(doc(db, 'reservations', id));
+            try {
+                await deleteDoc(doc(db, 'reservations', id));
+            } catch (error) {
+                bookingsCache = originalCache; // Rollback
+                throw error;
+            }
         } catch (error) {
-            // Rollback cache on error
-            await this.fetchRecentBookings(true);
             handleFirestoreError(OperationType.DELETE, error, 'reservations');
             throw error;
         }
     },
 
-    /** Check if a specific item is already booked during the proposed window (incl. buffer). */
+    /** Check availability with 24-hour maintenance buffer implementation */
     async isItemAvailable(itemId: string, startDate: Date, bufferEndDate: Date): Promise<boolean> {
         try {
             const q = query(
@@ -107,4 +127,3 @@ export const bookingService = {
         }
     }
 };
-
