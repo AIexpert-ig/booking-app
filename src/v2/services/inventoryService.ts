@@ -2,7 +2,8 @@ import {
     collection, getDocs, addDoc, updateDoc,
     doc, query, where, Timestamp
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase-bridge';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage, handleFirestoreError, OperationType } from '../firebase-bridge';
 import { Dress, InventoryItem } from '../types';
 
 export const inventoryService = {
@@ -12,6 +13,17 @@ export const inventoryService = {
             return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Dress));
         } catch (error) {
             handleFirestoreError(OperationType.LIST, error, 'dresses');
+        }
+    },
+
+    async uploadImage(file: File): Promise<string> {
+        try {
+            const storageRef = ref(storage, `dresses/${Date.now()}_${file.name}`);
+            const snapshot = await uploadBytes(storageRef, file);
+            return await getDownloadURL(snapshot.ref);
+        } catch (error) {
+            console.error('Image upload error:', error);
+            throw new Error('فشل رفع الصورة. يرجى المحاولة مرة أخرى.');
         }
     },
 

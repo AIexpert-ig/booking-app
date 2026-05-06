@@ -120,15 +120,54 @@ export default function DressForm({ initialData, onSuccess, onCancel }: DressFor
                         </div>
 
                         <div className="space-y-1.5">
-                            <label className="block text-xs font-bold text-stone-500 uppercase tracking-widest">رابط الصورة</label>
-                            <div className="relative">
-                                <ImageIcon className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
-                                <input
-                                    type="url" value={formData.imageUrl ?? ''}
-                                    onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
-                                    className="w-full h-12 pr-11 pl-4 bg-white border border-stone-200 rounded-xl outline-none focus:border-stone-900 transition-all text-sm"
-                                    placeholder="https://images.unsplash.com/..."
-                                />
+                            <label className="block text-xs font-bold text-stone-500 uppercase tracking-widest">صورة التصميم</label>
+                            <div className="flex items-center gap-4">
+                                <div className="relative w-24 h-24 bg-stone-100 rounded-xl overflow-hidden border border-stone-200 flex items-center justify-center group">
+                                    {formData.imageUrl ? (
+                                        <>
+                                            <img src={formData.imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                                            <button 
+                                                type="button"
+                                                onClick={() => setFormData({ ...formData, imageUrl: '' })}
+                                                className="absolute inset-0 bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                                            >
+                                                <X className="w-5 h-5" />
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <ImageIcon className="w-8 h-8 text-stone-300" />
+                                    )}
+                                </div>
+                                <div className="flex-1 space-y-2">
+                                    <label className="inline-block px-6 py-3 bg-white border border-stone-200 rounded-xl text-xs font-bold text-stone-600 hover:bg-stone-50 transition-colors cursor-pointer">
+                                        <div className="flex items-center gap-2">
+                                            <Plus className="w-4 h-4" /> رفع صورة جديدة
+                                        </div>
+                                        <input 
+                                            type="file" 
+                                            accept="image/*" 
+                                            className="hidden" 
+                                            onChange={async (e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) {
+                                                    try {
+                                                        setLoading(true);
+                                                        const url = await inventoryService.uploadImage(file);
+                                                        setFormData({ ...formData, imageUrl: url });
+                                                    } catch (err: any) {
+                                                        setError(err.message);
+                                                    } finally {
+                                                        setLoading(false);
+                                                    }
+                                                }
+                                            }}
+                                        />
+                                    </label>
+                                    <p className="text-[10px] text-stone-400 font-medium leading-relaxed">
+                                        يفضل استخدام صور عالية الجودة بصيغة JPG أو PNG. <br/>
+                                        سيتم تخزين الصورة بشكل آمن في سحابة التخزين.
+                                    </p>
+                                </div>
                             </div>
                         </div>
 
